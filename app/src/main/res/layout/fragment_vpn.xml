@@ -10,7 +10,7 @@
         android:id="@+id/tcp_proxy_url"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:hint="TCP Proxy URL"
+        android:hint="TCP Proxy URL(eg. 127.0.0.1:4521)"
         android:importantForAutofill="no"
         android:inputType="textUri" />
 
@@ -19,7 +19,7 @@
         android:id="@+id/user"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:hint="User (optional)"
+        android:hint="User"
         android:importantForAutofill="no"
         android:inputType="text" />
 
@@ -28,7 +28,7 @@
         android:id="@+id/pass"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:hint="Password (optional)"
+        android:hint="Password"
         android:importantForAutofill="no"
         android:inputType="textPassword" />
 
@@ -36,7 +36,7 @@
         android:id="@+id/udp_proxy_url"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:hint="UDP Proxy URL"
+        android:hint="UDP Proxy URL(eg. 127.0.0.1:4521)"
         android:importantForAutofill="no"
         android:inputType="textUri" />
 
@@ -44,7 +44,7 @@
         android:id="@+id/dns_address"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:hint="DNS Address"
+        android:hint="DNS Address(eg. 1.1.1.1)"
         android:importantForAutofill="no"
         android:inputType="textUri" />
 
