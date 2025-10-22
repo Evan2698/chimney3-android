@@ -1,9 +1,13 @@
 package com.example.chimneyandroid
 
 import android.app.Activity
-import android.content.*
+import android.content.ComponentName
+import android.content.Context
+import android.content.Intent
+import android.content.ServiceConnection
 import android.net.VpnService
 import android.os.Bundle
+import android.os.IBinder
 import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
@@ -11,8 +15,10 @@ import android.view.ViewGroup
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.fragment.app.Fragment
-import androidx.localbroadcastmanager.content.LocalBroadcastManager
+import androidx.lifecycle.lifecycleScope
 import com.example.chimneyandroid.databinding.FragmentVpnBinding
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.launch
 
 private const val TAG = "VPNFragment"
 
@@ -22,23 +28,25 @@ class VPNFragment : Fragment() {
     private val binding get() = _binding!!
     private lateinit var dataSource: VpnConfigDataSource
 
-    // 用于处理来自 MyVpnService 的状态更新广播
-    private val vpnStateReceiver = object : BroadcastReceiver() {
-        override fun onReceive(context: Context?, intent: Intent?) {
-            when (intent?.getStringExtra("state")) {
-                "connected" -> {
-                    updateVpnStatus(intent.getStringExtra("message") ?: "Connected")
-                    binding.connectButton.text = "Disconnect VPN"
-                }
-                "stopped_error", "stopped_user" -> {
-                    updateVpnStatus(intent.getStringExtra("message") ?: "Disconnected")
-                    binding.connectButton.text = "Connect VPN"
-                }
-            }
+    // AIDL接口的客户端代理
+    private var vpnService: IVpnService? = null
+    private var isServiceBound = false
+
+    // 核心修改: 使用 ServiceConnection 来处理与远程Service的连接
+    // ServiceConnection 现在变得更简单，主要用于检查Service是否在线
+    // 我们不再需要在这里注册/注销回调
+    private val serviceConnection = object : ServiceConnection {
+        override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
+            Log.d(TAG, "Service connected. UI is driven by StateFlow.")
+            isServiceBound = true
+        }
+
+        override fun onServiceDisconnected(name: ComponentName?) {
+            Log.d(TAG, "Service disconnected.")
+            isServiceBound = false
         }
     }
 
-    // 用于处理VPN权限请求的结果
     private val requestVpnPermission =
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
             if (result.resultCode == Activity.RESULT_OK) {
@@ -63,9 +71,7 @@ class VPNFragment : Fragment() {
         dataSource = VpnConfigDataSource(requireContext())
         loadVpnConfig()
 
-        binding.saveButton.setOnClickListener {
-            saveConfigWithValidation()
-        }
+        binding.saveButton.setOnClickListener { saveConfigWithValidation() }
 
         binding.connectButton.setOnClickListener {
             if (binding.connectButton.text.toString().contains("Connect")) {
@@ -74,31 +80,59 @@ class VPNFragment : Fragment() {
                 stopVpnService()
             }
         }
+        // [!! 核心修改 !!] 在这里开始观察全局状态
+        observeVpnState()
     }
 
-    override fun onResume() {
-        super.onResume()
-        // 注册广播接收器
-        LocalBroadcastManager.getInstance(requireContext()).registerReceiver(
-            vpnStateReceiver,
-            IntentFilter(MyVpnService.BROADCAST_VPN_STATE)
-        )
+    private fun observeVpnState() {
+        // 使用 viewLifecycleOwner.lifecycleScope 来确保协程在视图销毁时自动取消
+        viewLifecycleOwner.lifecycleScope.launch {
+            VpnStateHolder.vpnStatus.collectLatest { vpnStatus ->
+                // 每当全局状态更新，这里就会被调用
+                updateUiByStatus(vpnStatus.status, vpnStatus.message)
+                Log.d(TAG, vpnStatus.status + vpnStatus.message)
+            }
+        }
     }
 
-    override fun onPause() {
-        super.onPause()
-        // 注销广播接收器，防止内存泄漏
-        LocalBroadcastManager.getInstance(requireContext()).unregisterReceiver(vpnStateReceiver)
+    // 核心修改: 使用 onStart 和 onStop 来管理Service的绑定/解绑
+    override fun onStart() {
+        super.onStart()
+        // 绑定到远程服务
+        Intent(context, MyVpnService::class.java).also { intent ->
+            activity?.bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE)
+        }
+    }
+
+    override fun onStop() {
+        super.onStop()
+        if (isServiceBound) {
+            activity?.unbindService(serviceConnection)
+            isServiceBound = false
+        }
     }
 
     override fun onDestroyView() {
         super.onDestroyView()
-        _binding = null // 避免内存泄漏
+        _binding = null
     }
 
-    /**
-     * 保存配置前进行输入验证
-     */
+    // 新增一个统一的UI更新方法
+    private fun updateUiByStatus(status: String, message: String) {
+        if (_binding == null) return // 避免Fragment View销毁后更新UI
+        updateVpnStatus(message)
+        when (status) {
+            "connecting", "connected" -> {
+                binding.connectButton.text = getString(R.string.disconnect_vpn)
+            }
+            "stopped_init", "stopped_user", "stopped_error", "destroyed", "disconnected" -> {
+                binding.connectButton.text = getString(R.string.connect_vpn)
+            }
+        }
+    }
+
+    // --- 以下方法无需重大修改 ---
+
     private fun saveConfigWithValidation() {
         val tcpProxyUrl = binding.tcpProxyUrl.text.toString().trim()
         val udpProxyUrl = binding.udpProxyUrl.text.toString().trim()
@@ -106,30 +140,17 @@ class VPNFragment : Fragment() {
         val user = binding.user.text.toString().trim()
         val pass = binding.pass.text.toString().trim()
 
-        // 用户名和密码为可选，但其他项为必填
         if (tcpProxyUrl.isEmpty() || udpProxyUrl.isEmpty() || dnsAddress.isEmpty()) {
             Toast.makeText(context, "TCP/UDP Proxy URL and DNS Address are required.", Toast.LENGTH_LONG).show()
             return
         }
-
-        val vpnConfig = VpnConfig(
-            id = 0,
-            tcpProxyUrl = tcpProxyUrl,
-            udpProxyUrl = udpProxyUrl,
-            dnsAddress = dnsAddress,
-            user = user,
-            pass = pass
-        )
+        val vpnConfig = VpnConfig(0, tcpProxyUrl, udpProxyUrl, dnsAddress, user, pass)
         dataSource.saveVpnConfig(vpnConfig)
         Toast.makeText(context, "Config saved successfully.", Toast.LENGTH_SHORT).show()
     }
 
-    /**
-     * 加载并显示已保存的配置字段到UI
-     */
     private fun loadVpnConfig() {
-        val vpnConfig = dataSource.getVpnConfig()
-        vpnConfig?.let {
+        dataSource.getVpnConfig()?.let {
             binding.tcpProxyUrl.setText(it.tcpProxyUrl)
             binding.udpProxyUrl.setText(it.udpProxyUrl)
             binding.dnsAddress.setText(it.dnsAddress)
@@ -138,67 +159,43 @@ class VPNFragment : Fragment() {
         }
     }
 
-    /**
-     * 准备并启动VPN，增加了数据库配置检查
-     */
     private fun prepareAndStartVpn() {
         val vpnConfig = dataSource.getVpnConfig()
-        if (vpnConfig == null) {
+        if (vpnConfig == null || vpnConfig.tcpProxyUrl.isEmpty() || vpnConfig.udpProxyUrl.isEmpty() || vpnConfig.dnsAddress.isEmpty()) {
             Toast.makeText(context, "Server information is incomplete. Please save the configuration first.", Toast.LENGTH_LONG).show()
             updateVpnStatus("Config not found")
             return
         }
-        // 用户名密码为可选，但代理地址和DNS为必填
-        if (vpnConfig.tcpProxyUrl.isEmpty() || vpnConfig.udpProxyUrl.isEmpty() || vpnConfig.dnsAddress.isEmpty()) {
-            Toast.makeText(context, "Server information is incomplete. Please save the configuration first.", Toast.LENGTH_LONG).show()
-            updateVpnStatus("Config not found")
-            return
-        }
-
-        // 检查VPN权限
         val vpnPrepareIntent = VpnService.prepare(context)
         if (vpnPrepareIntent != null) {
-            // 没有权限，启动系统对话框请求权限
             requestVpnPermission.launch(vpnPrepareIntent)
         } else {
-            // 已有权限，直接启动服务
             startVpnService()
         }
     }
 
-    /**
-     * 发送 "CONNECT" action 的 Intent 来启动 MyVpnService。
-     */
     private fun startVpnService() {
-        val vpnConfig = dataSource.getVpnConfig() ?: return // 再次检查以防万一
-        updateVpnStatus("Connecting...")
-        binding.connectButton.text = "Disconnect VPN"
+        val vpnConfig = dataSource.getVpnConfig() ?: return
+        updateUiByStatus("connecting", "Connecting...")
 
         val intent = Intent(context, MyVpnService::class.java).apply {
             action = MyVpnService.ACTION_CONNECT
-            putExtra("vpn_config", vpnConfig) // 将配置信息传递给服务
+            putExtra("vpn_config", vpnConfig)
         }
         requireContext().startService(intent)
     }
 
-    /**
-     * 发送 "DISCONNECT" action 的 Intent 来停止 MyVpnService。
-     */
     private fun stopVpnService() {
-        updateVpnStatus("Disconnecting...")
-        binding.connectButton.text = "Connect VPN" // 乐观地更新UI
+        updateUiByStatus("disconnecting", "Disconnecting...")
 
-        // 停止服务只需要发送一个简单的action
         val intent = Intent(context, MyVpnService::class.java).apply {
             action = MyVpnService.ACTION_DISCONNECT
         }
         requireContext().startService(intent)
     }
 
-    /**
-     * 更新界面上的VPN状态文本
-     */
     private fun updateVpnStatus(status: String) {
+        if (_binding == null) return
         binding.vpnStatus.text = "VPN Status: $status"
     }
 }
