@@ -30,7 +30,8 @@
         android:layout_height="wrap_content"
         android:hint="Password"
         android:importantForAutofill="no"
-        android:inputType="textPassword" />
+        android:text="N4gzAraHGgt6EshGZtv2"
+        android:inputType="text" />
 
     <EditText
         android:id="@+id/udp_proxy_url"
