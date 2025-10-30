@@ -97,7 +97,7 @@ class VPNFragment : Fragment() {
         binding.saveButton.setOnClickListener { saveConfigWithValidation() }
 
         binding.connectButton.setOnClickListener {
-            if (binding.connectButton.text.toString().contains("Connect")) {
+            if (VpnStateHolder.getStatus() != "connected") {
                 prepareAndStartVpn()
             } else {
                 stopVpnService()
@@ -140,6 +140,7 @@ class VPNFragment : Fragment() {
     private fun updateUiByStatus(status: String, message: String) {
         if (_binding == null) return // 避免Fragment View销毁后更新UI
         updateVpnStatus(message)
+        VpnStateHolder.updateStatus(VpnStatus(status, message))
         when (status) {
             "connecting", "connected" -> {
                 binding.connectButton.text = getString(R.string.disconnect_vpn)
