@@ -53,7 +53,7 @@ class VPNFragment : Fragment() {
             isServiceBound = false
             vpnService = null
             // 更新UI到一个明确的断开状态
-            updateUiByStatus("disconnected", "Service Disconnected")
+            updateUiByStatus(VpnState.STOPPED.name, "Service Disconnected")
         }
     }
 
@@ -97,7 +97,8 @@ class VPNFragment : Fragment() {
         binding.saveButton.setOnClickListener { saveConfigWithValidation() }
 
         binding.connectButton.setOnClickListener {
-            if (VpnStateHolder.getStatus() != "connected") {
+            if (binding.connectButton.text.contains(getString(R.string.disconnect_vpn))
+            ) {
                 prepareAndStartVpn()
             } else {
                 stopVpnService()
@@ -142,10 +143,16 @@ class VPNFragment : Fragment() {
         updateVpnStatus(message)
         VpnStateHolder.updateStatus(VpnStatus(status, message))
         when (status) {
-            "connecting", "connected" -> {
+            VpnState.CONNECTING.name, VpnState.CONNECTED.name -> {
                 binding.connectButton.text = getString(R.string.disconnect_vpn)
             }
-            "disconnecting", "stopped_init", "stopped_user", "stopped_error", "destroyed", "disconnected" -> {
+           VpnState.IDLE.name,
+           VpnState.INITIALIZED.name,
+           VpnState.DISCONNECTING.name, // ,正在断开
+           VpnState.STOPPED.name,       // 已停止（由用户、错误或系统触发）
+           VpnState.INVALID_CONFIG.name, // 配置无效
+           VpnState.ERROR.name // 错误
+                         -> {
                 binding.connectButton.text = getString(R.string.connect_vpn)
             }
         }
@@ -170,12 +177,16 @@ class VPNFragment : Fragment() {
     }
 
     private fun loadVpnConfig() {
-        dataSource.getVpnConfig()?.let {
-            binding.tcpProxyUrl.setText(it.tcpProxyUrl)
-            binding.udpProxyUrl.setText(it.udpProxyUrl)
-            binding.dnsAddress.setText(it.dnsAddress)
-            binding.user.setText(it.user)
-            binding.pass.setText(it.pass)
+        if (dataSource.getVpnConfig() == null) {
+            this.updateUiByStatus(VpnState.IDLE.name, "")
+        } else {
+            dataSource.getVpnConfig()?.let {
+                binding.tcpProxyUrl.setText(it.tcpProxyUrl)
+                binding.udpProxyUrl.setText(it.udpProxyUrl)
+                binding.dnsAddress.setText(it.dnsAddress)
+                binding.user.setText(it.user)
+                binding.pass.setText(it.pass)
+            }
         }
     }
 
@@ -197,7 +208,7 @@ class VPNFragment : Fragment() {
     private fun startVpnService() {
         val vpnConfig = dataSource.getVpnConfig() ?: return
         // 乐观地更新UI，Service的回调会很快覆盖它
-        updateUiByStatus("connecting", "Connecting...")
+        updateUiByStatus(VpnState.CONNECTING.name, "Connecting...")
 
         val intent = Intent(context, MyVpnService::class.java).apply {
             action = MyVpnService.ACTION_CONNECT
@@ -209,7 +220,7 @@ class VPNFragment : Fragment() {
 
     private fun stopVpnService() {
         // 乐观地更新UI
-        updateUiByStatus("disconnecting", "Disconnecting...")
+        updateUiByStatus(VpnState.DISCONNECTING.name, "Disconnecting...")
 
         val intent = Intent(context, MyVpnService::class.java).apply {
             action = MyVpnService.ACTION_DISCONNECT
