@@ -12,6 +12,7 @@
         android:layout_height="wrap_content"
         android:hint="TCP Proxy URL(eg. 127.0.0.1:4521)"
         android:importantForAutofill="no"
+        android:text="[2001:df1:7880:2::2f8]:25"
         android:inputType="textUri" />
 
     <!-- [!! 新增 !!] -->
@@ -21,6 +22,7 @@
         android:layout_height="wrap_content"
         android:hint="User"
         android:importantForAutofill="no"
+        android:text="where"
         android:inputType="text" />
 
     <!-- [!! 新增 !!] -->
@@ -38,6 +40,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:hint="UDP Proxy URL(eg. 127.0.0.1:4521)"
+        android:text="[2001:df1:7880:2::2f8]:25"
         android:importantForAutofill="no"
         android:inputType="textUri" />
 
@@ -46,6 +49,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:hint="DNS Address(eg. 1.1.1.1)"
+        android:text="8.8.8.8"
         android:importantForAutofill="no"
         android:inputType="textUri" />
 
