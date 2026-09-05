@@ -17,9 +17,14 @@ class MyVpnService : VpnService(), vpncore.Protect {
     private var vpnInterface: ParcelFileDescriptor? = null
     private var vpnThread: Thread? = null
     private var currentConfig: VpnConfig? = null
+    private var stopRequested = false
+    private var coreStarted = false
+    private val stateLock = Any()
 
     // 当前VPN状态，作为此Service进程内的"单一事实来源"
+    @Volatile
     private var currentState: VpnState = VpnState.IDLE
+    @Volatile
     private var currentMessage = "Service initialized"
 
     // AIDL回调列表，用于管理所有注册的UI客户端
@@ -86,7 +91,7 @@ class MyVpnService : VpnService(), vpncore.Protect {
                     stopSelf()
                     return START_NOT_STICKY
                 }
-                startVpn()
+                startVpn(currentConfig!!)
                 return START_STICKY
             }
             ACTION_DISCONNECT -> {
@@ -103,98 +108,105 @@ class MyVpnService : VpnService(), vpncore.Protect {
         super.onDestroy()
         Log.i(TAG, "VPN Service destroyed.")
         stopVpn()
-        updateStatusAndNotify(VpnState.STOPPED, "Service destroyed")
         callbacks.kill()
     }
 
-    private fun startVpn() {
-        if (vpnThread != null) {
-            Log.w(TAG, "VPN is already running, will not start again.")
-            return
+    private fun startVpn(config: VpnConfig) {
+        synchronized(stateLock) {
+            if (vpnThread != null || currentState == VpnState.CONNECTING || currentState == VpnState.CONNECTED) {
+                Log.w(TAG, "VPN is already running, will not start again.")
+                return
+            }
+            stopRequested = false
+            coreStarted = false
+            currentConfig = config
+            updateStatusAndNotify(VpnState.CONNECTING, "Connecting...")
+            vpnThread = Thread { runVpn(config) }.apply {
+                name = "MyVpnThread"
+                start()
+            }
         }
+    }
 
-        updateStatusAndNotify(VpnState.CONNECTING, "Connecting...")
-
-        vpnThread = Thread {
-            try {
-                vpnInterface = configureVpn()
+    private fun runVpn(config: VpnConfig) {
+        try {
+            vpnInterface = configureVpn(config)
                 if (vpnInterface == null) {
                     Log.e(TAG, "Failed to establish VPN interface.")
                     updateStatusAndNotify(VpnState.ERROR, "Failed to establish interface")
-                    return@Thread
+                    return
                 }
                 Log.i(TAG, "VPN interface established. Starting Chimney core...")
 
                 val c = vpncore.Chimney().apply {
                     fd = vpnInterface!!.fd.toLong()
-                    user = currentConfig?.user ?: ""
-                    pass = currentConfig?.pass ?: ""
+                    user = config.user
+                    pass = config.pass
                     mtu = 1500
                     pfun = this@MyVpnService
-                    tcpProxyUrl = currentConfig!!.tcpProxyUrl
-                    udpProxyUrl = currentConfig!!.udpProxyUrl
+                    tcpProxyUrl = config.tcpProxyUrl
+                    udpProxyUrl = config.udpProxyUrl
                 }
 
-                // 核心库启动成功后，立即更新状态为 "connected"
-                updateStatusAndNotify(VpnState.CONNECTING, "VPN interface prepared")
-                Log.i(TAG, "Chimney core started. Waiting for it to exit...")
-
-                // 此方法会阻塞，直到VPN断开
+                synchronized(stateLock) {
+                    if (stopRequested) return
+                    coreStarted = true
+                }
+                updateStatusAndNotify(VpnState.CONNECTED, "Connected")
                 Vpncore.startChimney(c)
+                Log.i(TAG, "Chimney core started.")
 
-                // 当 startChimney() 返回时，意味着VPN已停止。
-                Log.i(TAG, "Chimney core has been running.")
-                // 检查当前状态，如果仍然是connected或disconnecting，说明是核心库主动断开或被我们触发断开
-                updateStatusAndNotify(VpnState.CONNECTED, "connected")
-
-                while (!Thread.interrupted()){
+                // vpn.aar returns after starting its native worker.
+                // Keep the VPN interface alive until an explicit disconnect.
+                while (true) {
                     Thread.sleep(1000)
+                    synchronized(stateLock) {
+                        if (stopRequested) break
+                    }
                 }
-
-            } catch (e: Exception) {
-                if (e !is InterruptedException) {
-                    Log.e(TAG, "VPN thread error", e)
-                    updateStatusAndNotify(VpnState.ERROR, "VPN thread error: ${e.message}")
-                }
-            } finally {
-                // 清理资源并重置线程变量
-                vpnInterface?.close()
-                vpnInterface = null
-                vpnThread = null
-                Log.i(TAG, "VPN thread finished.")
-                updateStatusAndNotify(VpnState.STOPPED, "Disconnected")
+        } catch (e: Exception) {
+            if (!stopRequested && e !is InterruptedException) {
+                Log.e(TAG, "VPN thread error", e)
+                updateStatusAndNotify(VpnState.ERROR, "VPN error: ${e.message ?: "Unknown error"}")
             }
-        }.apply {
-            name = "MyVpnThread"
-            start()
+        } finally {
+            vpnInterface?.close()
+            vpnInterface = null
+            synchronized(stateLock) {
+                coreStarted = false
+                vpnThread = null
+            }
+            Log.i(TAG, "VPN thread finished.")
+            updateStatusAndNotify(VpnState.STOPPED, "Disconnected")
         }
     }
 
     private fun stopVpn() {
-        if (vpnThread == null && currentState != VpnState.CONNECTING) {
-            Log.d(TAG, "stopVpn() called but VPN is not in a running state.")
-            // 如果已经是停止状态，可以强制通知一下，确保UI同步
-            if (currentState != VpnState.STOPPED) {
-                updateStatusAndNotify(VpnState.STOPPED, "Disconnected")
+        val shouldStopCore: Boolean
+        synchronized(stateLock) {
+            if (vpnThread == null) {
+                Log.d(TAG, "stopVpn() called but VPN is not running.")
+                if (currentState != VpnState.STOPPED) {
+                    updateStatusAndNotify(VpnState.STOPPED, "Disconnected")
+                }
+                return
             }
-            return
+            stopRequested = true
+            shouldStopCore = coreStarted
+            updateStatusAndNotify(VpnState.DISCONNECTING, "Disconnecting...")
         }
 
-        updateStatusAndNotify(VpnState.DISCONNECTING, "Disconnecting...")
-
-        // 调用核心库的停止方法，这会让 startChimney() 方法返回
-        Vpncore.stopChimney()
-
-        // 中断线程，以防它被其他操作阻塞
+        if (shouldStopCore) {
+            Vpncore.stopChimney()
+        }
         vpnThread?.interrupt()
     }
 
-    private fun configureVpn(): ParcelFileDescriptor? {
-        val dns = currentConfig?.dnsAddress ?: "1.1.1.1"
+    private fun configureVpn(config: VpnConfig): ParcelFileDescriptor? {
         return Builder()
             .addAddress("10.8.0.2", 24)
             .addRoute("0.0.0.0", 0)
-            .addDnsServer(dns)
+            .addDnsServer(config.dnsAddress)
             .setSession(getString(R.string.app_name))
             .setMtu(1500)
             .establish()

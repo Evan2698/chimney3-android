@@ -22,8 +22,14 @@ class VpnConfigDbHelper(context: Context) : SQLiteOpenHelper(context, DATABASE_N
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
-        db.execSQL("DROP TABLE IF EXISTS vpn_config")
-        onCreate(db)
+        db.execSQL("CREATE TABLE IF NOT EXISTS vpn_config (" +
+            "${BaseColumns._ID} INTEGER PRIMARY KEY AUTOINCREMENT," +
+            "tcp_proxy_url TEXT NOT NULL DEFAULT ''," +
+            "udp_proxy_url TEXT NOT NULL DEFAULT ''," +
+            "dns_address TEXT NOT NULL DEFAULT ''," +
+            "user TEXT NOT NULL DEFAULT ''," +
+            "pass TEXT NOT NULL DEFAULT ''" +
+            ")")
     }
 
     companion object {

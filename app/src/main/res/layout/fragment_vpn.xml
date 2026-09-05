@@ -12,7 +12,7 @@
         android:layout_height="wrap_content"
         android:hint="TCP Proxy URL(eg. 127.0.0.1:4521)"
         android:importantForAutofill="no"
-        android:text="[2001:df1:7880:2::2f8]:25"
+        android:text=""
         android:inputType="textUri" />
 
     <!-- [!! 新增 !!] -->
@@ -21,8 +21,8 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:hint="User"
+        android:text=""
         android:importantForAutofill="no"
-        android:text="where"
         android:inputType="text" />
 
     <!-- [!! 新增 !!] -->
@@ -32,15 +32,14 @@
         android:layout_height="wrap_content"
         android:hint="Password"
         android:importantForAutofill="no"
-        android:text="N4gzAraHGgt6EshGZtv2"
-        android:inputType="text" />
+        android:text="N4gzAraHGgt6EshGZtv2" />
 
     <EditText
         android:id="@+id/udp_proxy_url"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:hint="UDP Proxy URL(eg. 127.0.0.1:4521)"
-        android:text="[2001:df1:7880:2::2f8]:25"
+        android:text=""
         android:importantForAutofill="no"
         android:inputType="textUri" />
 
@@ -49,7 +48,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:hint="DNS Address(eg. 1.1.1.1)"
-        android:text="8.8.8.8"
+        android:text="1.1.1.1"
         android:importantForAutofill="no"
         android:inputType="textUri" />
 

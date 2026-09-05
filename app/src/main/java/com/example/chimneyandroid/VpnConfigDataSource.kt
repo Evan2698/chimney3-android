@@ -18,13 +18,16 @@ class VpnConfigDataSource(context: Context) {
             put("pass", vpnConfig.pass)
         }
 
-        val rowsAffected = db.update("vpn_config", values, null, null)
-
-        return if (rowsAffected > 0) {
-            getVpnConfig()?.id ?: -1L
-        } else {
-            db.insert("vpn_config", null, values)
+        var id = -1L
+        db.beginTransaction()
+        try {
+            db.delete("vpn_config", null, null)
+            id = db.insertOrThrow("vpn_config", null, values)
+            db.setTransactionSuccessful()
+        } finally {
+            db.endTransaction()
         }
+        return id
     }
 
     fun getVpnConfig(): VpnConfig? {

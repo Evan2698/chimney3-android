@@ -9,6 +9,7 @@
     <!-- [!! 在这里添加下面两行 !!] -->
     <string name="connect_vpn">Connect  VPN</string>
     <string name="disconnect_vpn">Disconnect VPN</string>
+    <string name="disconnecting_vpn">Disconnecting...</string>
 
 
 

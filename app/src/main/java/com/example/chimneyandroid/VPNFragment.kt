@@ -29,6 +29,8 @@ class VPNFragment : Fragment() {
     // AIDL接口的客户端代理
     private var vpnService: IVpnService? = null
     private var isServiceBound = false
+    private var isServiceBindingRequested = false
+    private var vpnState = VpnState.IDLE
 
     // ServiceConnection现在是状态同步的关键
     private val serviceConnection = object : ServiceConnection {
@@ -77,7 +79,7 @@ class VPNFragment : Fragment() {
                 startVpnService()
             } else {
                 Log.w(TAG, "User declined VPN permission.")
-                updateVpnStatus("Permission Denied")
+                updateUiByStatus(VpnState.IDLE.name, "Permission denied")
             }
         }
 
@@ -97,11 +99,10 @@ class VPNFragment : Fragment() {
         binding.saveButton.setOnClickListener { saveConfigWithValidation() }
 
         binding.connectButton.setOnClickListener {
-            if (binding.connectButton.text.contains(getString(R.string.disconnect_vpn))
-            ) {
-                prepareAndStartVpn()
-            } else {
-                stopVpnService()
+            when (vpnState) {
+                VpnState.CONNECTING, VpnState.CONNECTED -> stopVpnService()
+                VpnState.DISCONNECTING -> Unit
+                else -> prepareAndStartVpn()
             }
         }
     }
@@ -112,23 +113,31 @@ class VPNFragment : Fragment() {
         Log.d(TAG, "onStart: Binding to service...")
         // 绑定到远程服务
         Intent(context, MyVpnService::class.java).also { intent ->
-            activity?.bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE)
+            isServiceBindingRequested = activity?.bindService(
+                intent,
+                serviceConnection,
+                Context.BIND_AUTO_CREATE
+            ) == true
         }
     }
 
     override fun onStop() {
         super.onStop()
         Log.d(TAG, "onStop: Unbinding from service...")
-        if (isServiceBound) {
+        if (isServiceBindingRequested) {
             try {
                 // 关键: 在解绑前，必须先注销回调
-                vpnService?.unregisterCallback(vpnServiceCallback)
+                if (isServiceBound) {
+                    vpnService?.unregisterCallback(vpnServiceCallback)
+                }
             } catch (e: RemoteException) {
                 Log.e(TAG, "Failed to unregister callback", e)
             }
             // 解绑服务
             activity?.unbindService(serviceConnection)
             isServiceBound = false
+            isServiceBindingRequested = false
+            vpnService = null
         }
     }
 
@@ -140,20 +149,21 @@ class VPNFragment : Fragment() {
     // 统一的UI更新方法
     private fun updateUiByStatus(status: String, message: String) {
         if (_binding == null) return // 避免Fragment View销毁后更新UI
+        vpnState = runCatching { VpnState.valueOf(status) }.getOrDefault(VpnState.ERROR)
         updateVpnStatus(message)
         VpnStateHolder.updateStatus(VpnStatus(status, message))
-        when (status) {
-            VpnState.CONNECTING.name, VpnState.CONNECTED.name -> {
+        when (vpnState) {
+            VpnState.CONNECTING, VpnState.CONNECTED -> {
                 binding.connectButton.text = getString(R.string.disconnect_vpn)
+                binding.connectButton.isEnabled = true
             }
-           VpnState.IDLE.name,
-           VpnState.INITIALIZED.name,
-           VpnState.DISCONNECTING.name, // ,正在断开
-           VpnState.STOPPED.name,       // 已停止（由用户、错误或系统触发）
-           VpnState.INVALID_CONFIG.name, // 配置无效
-           VpnState.ERROR.name // 错误
-                         -> {
+            VpnState.DISCONNECTING -> {
+                binding.connectButton.text = getString(R.string.disconnecting_vpn)
+                binding.connectButton.isEnabled = false
+            }
+            else -> {
                 binding.connectButton.text = getString(R.string.connect_vpn)
+                binding.connectButton.isEnabled = true
             }
         }
     }
