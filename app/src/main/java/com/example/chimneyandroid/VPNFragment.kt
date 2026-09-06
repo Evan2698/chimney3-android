@@ -16,6 +16,7 @@ import android.view.ViewGroup
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.fragment.app.Fragment
+import androidx.lifecycle.Lifecycle
 import com.example.chimneyandroid.databinding.FragmentVpnBinding
 
 private const val TAG = "VPNFragment"
@@ -31,6 +32,7 @@ class VPNFragment : Fragment() {
     private var isServiceBound = false
     private var isServiceBindingRequested = false
     private var vpnState = VpnState.IDLE
+    private var uiGeneration = 0
 
     // ServiceConnection现在是状态同步的关键
     private val serviceConnection = object : ServiceConnection {
@@ -63,7 +65,14 @@ class VPNFragment : Fragment() {
     private val vpnServiceCallback = object : IVpnServiceCallback.Stub() {
         override fun onStatusChanged(status: String?, message: String?) {
             // 这个方法是在Binder线程中被调用的，更新UI必须切换到主线程
+            val callbackGeneration = uiGeneration
             activity?.runOnUiThread {
+                if (callbackGeneration != uiGeneration ||
+                    _binding == null ||
+                    !lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)
+                ) {
+                    return@runOnUiThread
+                }
                 if (status != null && message != null) {
                     Log.d(TAG, "Callback received: status=$status, message=$message")
                     updateUiByStatus(status, message)
@@ -110,6 +119,7 @@ class VPNFragment : Fragment() {
     // 在 onStart 和 onStop 中正确地管理绑定、解绑和回调注册
     override fun onStart() {
         super.onStart()
+        uiGeneration++
         Log.d(TAG, "onStart: Binding to service...")
         // 绑定到远程服务
         Intent(context, MyVpnService::class.java).also { intent ->
@@ -123,6 +133,7 @@ class VPNFragment : Fragment() {
 
     override fun onStop() {
         super.onStop()
+        uiGeneration++
         Log.d(TAG, "onStop: Unbinding from service...")
         if (isServiceBindingRequested) {
             try {
@@ -143,6 +154,7 @@ class VPNFragment : Fragment() {
 
     override fun onDestroyView() {
         super.onDestroyView()
+        uiGeneration++
         _binding = null
     }
 
@@ -231,6 +243,16 @@ class VPNFragment : Fragment() {
     private fun stopVpnService() {
         // 乐观地更新UI
         updateUiByStatus(VpnState.DISCONNECTING.name, "Disconnecting...")
+
+        val boundService = vpnService
+        if (isServiceBound && boundService != null) {
+            try {
+                boundService.disconnect()
+                return
+            } catch (e: RemoteException) {
+                Log.w(TAG, "Bound service unavailable, falling back to disconnect intent", e)
+            }
+        }
 
         val intent = Intent(context, MyVpnService::class.java).apply {
             action = MyVpnService.ACTION_DISCONNECT

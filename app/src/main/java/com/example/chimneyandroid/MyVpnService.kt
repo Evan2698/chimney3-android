@@ -37,6 +37,10 @@ class MyVpnService : VpnService(), vpncore.Protect {
             return currentState.name
         }
 
+        override fun disconnect() {
+            stopVpn()
+        }
+
         override fun registerCallback(callback: IVpnServiceCallback?) {
             callback?.let {
                 callbacks.register(it)
