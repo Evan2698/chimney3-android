@@ -39,6 +39,12 @@ class VPNFragment : Fragment() {
     private val serviceConnection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
             Log.d(TAG, "Service connected.")
+            if (!isServiceBindingRequested || _binding == null ||
+                !lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)
+            ) {
+                Log.d(TAG, "Ignoring stale service connection.")
+                return
+            }
             // 服务绑定成功，获取AIDL接口的代理
             vpnService = IVpnService.Stub.asInterface(service)
             isServiceBound = true
@@ -198,10 +204,9 @@ class VPNFragment : Fragment() {
         val user = binding.user.text.toString().trim()
         val pass = binding.pass.text.toString().trim()
 
-        if (tcpProxyUrl.isEmpty() || udpProxyUrl.isEmpty() || dnsAddress.isEmpty() ||
-            user.isEmpty() || pass.isEmpty()
+        if (tcpProxyUrl.isEmpty() || udpProxyUrl.isEmpty() || dnsAddress.isEmpty()
         ) {
-            Toast.makeText(context, "Proxy URLs, DNS address, username, and password are required.", Toast.LENGTH_LONG).show()
+            Toast.makeText(context, "Proxy URLs and DNS address are required.", Toast.LENGTH_LONG).show()
             return
         }
         val vpnConfig = VpnConfig(0, tcpProxyUrl, udpProxyUrl, dnsAddress, user, pass)
@@ -210,25 +215,24 @@ class VPNFragment : Fragment() {
     }
 
     private fun loadVpnConfig() {
-        if (dataSource.getVpnConfig() == null) {
+        val savedConfig = dataSource.getVpnConfig()
+        if (savedConfig == null) {
             this.updateUiByStatus(VpnState.IDLE.name, "")
         } else {
-            dataSource.getVpnConfig()?.let {
-                binding.tcpProxyUrl.setText(it.tcpProxyUrl)
-                binding.udpProxyUrl.setText(it.udpProxyUrl)
-                binding.dnsAddress.setText(it.dnsAddress)
-                binding.user.setText(it.user)
-                binding.pass.setText(it.pass)
-            }
+            binding.tcpProxyUrl.setText(savedConfig.tcpProxyUrl)
+            binding.udpProxyUrl.setText(savedConfig.udpProxyUrl)
+            binding.dnsAddress.setText(savedConfig.dnsAddress)
+            binding.user.setText(savedConfig.user)
+            binding.pass.setText(savedConfig.pass)
         }
     }
 
     private fun prepareAndStartVpn() {
         val vpnConfig = dataSource.getVpnConfig()
         if (vpnConfig == null || vpnConfig.tcpProxyUrl.isEmpty() || vpnConfig.udpProxyUrl.isEmpty() ||
-            vpnConfig.dnsAddress.isEmpty() || vpnConfig.user.isEmpty() || vpnConfig.pass.isEmpty()
+            vpnConfig.dnsAddress.isEmpty()
         ) {
-            Toast.makeText(context, "Proxy URLs, DNS address, username, and password are required.", Toast.LENGTH_LONG).show()
+            Toast.makeText(context, "Proxy URLs and DNS address are required.", Toast.LENGTH_LONG).show()
             updateVpnStatus("Config not found")
             return
         }
@@ -249,8 +253,8 @@ class VPNFragment : Fragment() {
             action = MyVpnService.ACTION_CONNECT
             putExtra("vpn_config", vpnConfig)
         }
-        // 使用 startService 来确保Service在后台持续运行
-        requireContext().startService(intent)
+        // The foreground service keeps the VPN alive while the app is backgrounded.
+        ContextCompat.startForegroundService(requireContext(), intent)
     }
 
     private fun stopVpnService() {

@@ -1,5 +1,8 @@
 package com.example.chimneyandroid
 
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
 import android.content.Intent
 import android.net.VpnService
 import android.os.Build
@@ -11,6 +14,8 @@ import android.util.Log
 import vpncore.Vpncore
 
 private const val TAG = "MyVpnService"
+private const val NOTIFICATION_CHANNEL_ID = "vpn_status"
+private const val NOTIFICATION_ID = 1001
 
 class MyVpnService : VpnService(), vpncore.Protect {
 
@@ -67,6 +72,7 @@ class MyVpnService : VpnService(), vpncore.Protect {
     override fun onCreate() {
         super.onCreate()
         Log.i(TAG, "VPN Service created in process ${android.os.Process.myPid()}.")
+        createNotificationChannel()
         // 初始化状态
         updateStatusAndNotify(VpnState.IDLE, "Service initialized")
     }
@@ -82,6 +88,7 @@ class MyVpnService : VpnService(), vpncore.Protect {
         when (intent?.action) {
             ACTION_CONNECT -> {
                 Log.i(TAG, "Received CONNECT action.")
+                startForegroundServiceNotification()
                 currentConfig = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                     intent.getParcelableExtra("vpn_config", VpnConfig::class.java)
                 } else {
@@ -92,6 +99,7 @@ class MyVpnService : VpnService(), vpncore.Protect {
                 if (currentConfig == null) {
                     Log.e(TAG, "Failed to get VpnConfig from Intent.")
                     updateStatusAndNotify(VpnState.INVALID_CONFIG, "Config not found")
+                    stopForegroundServiceNotification()
                     stopSelf()
                     return START_NOT_STICKY
                 }
@@ -111,6 +119,7 @@ class MyVpnService : VpnService(), vpncore.Protect {
     override fun onDestroy() {
         Log.i(TAG, "VPN Service destroyed.")
         stopVpn()
+        stopForegroundServiceNotification()
         callbacks.kill()
         super.onDestroy()
     }
@@ -135,12 +144,12 @@ class MyVpnService : VpnService(), vpncore.Protect {
     private fun runVpn(config: VpnConfig) {
         try {
             vpnInterface = configureVpn(config)
-                if (vpnInterface == null) {
-                    Log.e(TAG, "Failed to establish VPN interface.")
-                    updateStatusAndNotify(VpnState.ERROR, "Failed to establish interface")
-                    return
-                }
-                Log.i(TAG, "VPN interface established. Starting Chimney core...")
+            if (vpnInterface == null) {
+                Log.e(TAG, "Failed to establish VPN interface.")
+                updateStatusAndNotify(VpnState.ERROR, "Failed to establish interface")
+                return
+            }
+            Log.i(TAG, "VPN interface established. Starting Chimney core...")
 
                 val c = vpncore.Chimney().apply {
                     fd = vpnInterface!!.fd.toLong()
@@ -182,6 +191,7 @@ class MyVpnService : VpnService(), vpncore.Protect {
             }
             Log.i(TAG, "VPN thread finished.")
             updateStatusAndNotify(VpnState.STOPPED, "Disconnected")
+            stopForegroundServiceNotification()
         }
     }
 
@@ -192,6 +202,7 @@ class MyVpnService : VpnService(), vpncore.Protect {
             val thread = vpnThread
             if (thread == null) {
                 Log.d(TAG, "stopVpn() ignored because VPN is not running.")
+                stopForegroundServiceNotification()
                 return
             }
             if (currentState == VpnState.DISCONNECTING || stopRequested) {
@@ -208,6 +219,52 @@ class MyVpnService : VpnService(), vpncore.Protect {
             Vpncore.stopChimney()
         }
         threadToStop.interrupt()
+    }
+
+    private fun createNotificationChannel() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = NotificationChannel(
+                NOTIFICATION_CHANNEL_ID,
+                getString(R.string.vpn_notification_channel_name),
+                NotificationManager.IMPORTANCE_LOW
+            ).apply {
+                description = getString(R.string.vpn_notification_channel_description)
+            }
+            getSystemService(NotificationManager::class.java)
+                .createNotificationChannel(channel)
+        }
+    }
+
+    private fun startForegroundServiceNotification() {
+        val notification = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            Notification.Builder(this, NOTIFICATION_CHANNEL_ID)
+        } else {
+            @Suppress("DEPRECATION")
+            Notification.Builder(this)
+        }.setContentTitle(getString(R.string.app_name))
+            .setContentText(getString(R.string.vpn_notification_text))
+            .setSmallIcon(R.drawable.ic_launcher_foreground)
+            .setOngoing(true)
+            .build()
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            startForeground(
+                NOTIFICATION_ID,
+                notification,
+                android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+            )
+        } else {
+            startForeground(NOTIFICATION_ID, notification)
+        }
+    }
+
+    private fun stopForegroundServiceNotification() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            stopForeground(STOP_FOREGROUND_REMOVE)
+        } else {
+            @Suppress("DEPRECATION")
+            stopForeground(true)
+        }
     }
 
     private fun configureVpn(config: VpnConfig): ParcelFileDescriptor? {

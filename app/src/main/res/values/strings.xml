@@ -31,4 +31,7 @@
     <string name="about_protocol_description">This app creates a local VPN tunnel and forwards traffic through the configured TCP and UDP proxy servers. DNS requests use the configured DNS address.</string>
     <string name="about_version">Version 1.6</string>
     <string name="open_about">About</string>
+    <string name="vpn_notification_channel_name">VPN connection</string>
+    <string name="vpn_notification_channel_description">Keeps the VPN connection active</string>
+    <string name="vpn_notification_text">VPN connection is active</string>
 </resources>
