@@ -10,7 +10,7 @@
     <string name="connect_vpn">Connect VPN</string>
     <string name="disconnect_vpn">Disconnect VPN</string>
     <string name="disconnecting_vpn">Disconnecting...</string>
-    <string name="vpn_title">VPN</string>
+    <string name="vpn_title">My VPN</string>
     <string name="server_configuration">Server configuration</string>
     <string name="account_required">Account (required)</string>
     <string name="tcp_proxy_url">TCP proxy URL</string>
