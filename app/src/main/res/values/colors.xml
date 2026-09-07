@@ -2,4 +2,11 @@
 <resources>
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
+    <color name="vpn_status_idle">#E8EEF7</color>
+    <color name="vpn_status_connecting">#FFF1D6</color>
+    <color name="vpn_status_connected">#DDF5E5</color>
+    <color name="vpn_status_error">#FDE2E1</color>
+    <color name="vpn_save_button">#3F51B5</color>
+    <color name="vpn_connect_button">#6750A4</color>
+    <color name="vpn_connect_button_text">#FFFFFFFF</color>
 </resources>

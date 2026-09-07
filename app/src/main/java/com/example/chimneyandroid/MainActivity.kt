@@ -30,4 +30,18 @@ class MainActivity : AppCompatActivity() {
 
         }
 
+    override fun onCreateOptionsMenu(menu: Menu): Boolean {
+        menuInflater.inflate(R.menu.menu_main, menu)
+        return true
+    }
+
+    override fun onOptionsItemSelected(item: MenuItem): Boolean {
+        return if (item.itemId == R.id.action_about) {
+            findNavController(R.id.nav_host_fragment_content_main).navigate(R.id.aboutFragment)
+            true
+        } else {
+            super.onOptionsItemSelected(item)
+        }
+    }
+
 }

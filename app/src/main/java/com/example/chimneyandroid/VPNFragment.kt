@@ -15,6 +15,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.Lifecycle
 import com.example.chimneyandroid.databinding.FragmentVpnBinding
@@ -163,6 +164,14 @@ class VPNFragment : Fragment() {
         if (_binding == null) return // 避免Fragment View销毁后更新UI
         vpnState = runCatching { VpnState.valueOf(status) }.getOrDefault(VpnState.ERROR)
         updateVpnStatus(message)
+        binding.vpnStatusCard.setCardBackgroundColor(
+            ContextCompat.getColor(requireContext(), when (vpnState) {
+                VpnState.CONNECTED -> R.color.vpn_status_connected
+                VpnState.CONNECTING, VpnState.DISCONNECTING -> R.color.vpn_status_connecting
+                VpnState.IDLE, VpnState.STOPPED, VpnState.INITIALIZED -> R.color.vpn_status_idle
+                VpnState.INVALID_CONFIG, VpnState.ERROR -> R.color.vpn_status_error
+            })
+        )
         VpnStateHolder.updateStatus(VpnStatus(status, message))
         when (vpnState) {
             VpnState.CONNECTING, VpnState.CONNECTED -> {
@@ -189,8 +198,10 @@ class VPNFragment : Fragment() {
         val user = binding.user.text.toString().trim()
         val pass = binding.pass.text.toString().trim()
 
-        if (tcpProxyUrl.isEmpty() || udpProxyUrl.isEmpty() || dnsAddress.isEmpty()) {
-            Toast.makeText(context, "TCP/UDP Proxy URL and DNS Address are required.", Toast.LENGTH_LONG).show()
+        if (tcpProxyUrl.isEmpty() || udpProxyUrl.isEmpty() || dnsAddress.isEmpty() ||
+            user.isEmpty() || pass.isEmpty()
+        ) {
+            Toast.makeText(context, "Proxy URLs, DNS address, username, and password are required.", Toast.LENGTH_LONG).show()
             return
         }
         val vpnConfig = VpnConfig(0, tcpProxyUrl, udpProxyUrl, dnsAddress, user, pass)
@@ -214,8 +225,10 @@ class VPNFragment : Fragment() {
 
     private fun prepareAndStartVpn() {
         val vpnConfig = dataSource.getVpnConfig()
-        if (vpnConfig == null || vpnConfig.tcpProxyUrl.isEmpty() || vpnConfig.udpProxyUrl.isEmpty() || vpnConfig.dnsAddress.isEmpty()) {
-            Toast.makeText(context, "Server information is incomplete. Please save the configuration first.", Toast.LENGTH_LONG).show()
+        if (vpnConfig == null || vpnConfig.tcpProxyUrl.isEmpty() || vpnConfig.udpProxyUrl.isEmpty() ||
+            vpnConfig.dnsAddress.isEmpty() || vpnConfig.user.isEmpty() || vpnConfig.pass.isEmpty()
+        ) {
+            Toast.makeText(context, "Proxy URLs, DNS address, username, and password are required.", Toast.LENGTH_LONG).show()
             updateVpnStatus("Config not found")
             return
         }
@@ -241,19 +254,10 @@ class VPNFragment : Fragment() {
     }
 
     private fun stopVpnService() {
-        // 乐观地更新UI
         updateUiByStatus(VpnState.DISCONNECTING.name, "Disconnecting...")
 
-        val boundService = vpnService
-        if (isServiceBound && boundService != null) {
-            try {
-                boundService.disconnect()
-                return
-            } catch (e: RemoteException) {
-                Log.w(TAG, "Bound service unavailable, falling back to disconnect intent", e)
-            }
-        }
-
+        // Use the service command as the source of truth. The bound Binder can be
+        // stale after the activity has been recreated or returned from background.
         val intent = Intent(context, MyVpnService::class.java).apply {
             action = MyVpnService.ACTION_DISCONNECT
         }
@@ -262,6 +266,6 @@ class VPNFragment : Fragment() {
 
     private fun updateVpnStatus(status: String) {
         if (_binding == null) return
-        binding.vpnStatus.text = "VPN Status: $status"
+        binding.vpnStatus.text = getString(R.string.vpn_status_format, status)
     }
 }
