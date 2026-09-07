@@ -29,7 +29,6 @@
     <string name="about_description">A simple and secure VPN connection tool.</string>
     <string name="about_protocol_title">Protocol</string>
     <string name="about_protocol_description">This app creates a local VPN tunnel and forwards traffic through the configured TCP and UDP proxy servers. DNS requests use the configured DNS address.</string>
-    <string name="about_version">Version 1.8</string>
     <string name="open_about">About</string>
     <string name="vpn_notification_channel_name">VPN connection</string>
     <string name="vpn_notification_channel_description">Keeps the VPN connection active</string>

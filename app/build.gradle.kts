@@ -15,7 +15,8 @@ android {
         minSdk = 30
         targetSdk = 33
         versionCode = 1
-        versionName = "1.8"
+        versionName = "1.9"
+        resValue("string", "about_version", "Version $versionName")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
