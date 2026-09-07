@@ -7,10 +7,20 @@
     <string name="next">Next</string>
     <string name="previous">Previous</string>
     <!-- [!! 在这里添加下面两行 !!] -->
-    <string name="connect_vpn">Connect  VPN</string>
+    <string name="connect_vpn">Connect VPN</string>
     <string name="disconnect_vpn">Disconnect VPN</string>
     <string name="disconnecting_vpn">Disconnecting...</string>
-
-
-
+    <string name="vpn_title">VPN connection</string>
+    <string name="vpn_subtitle">Configure your proxy and connect securely.</string>
+    <string name="server_configuration">Server configuration</string>
+    <string name="account_optional">Account (optional)</string>
+    <string name="tcp_proxy_url">TCP proxy URL</string>
+    <string name="udp_proxy_url">UDP proxy URL</string>
+    <string name="dns_address">DNS address</string>
+    <string name="default_dns">1.1.1.1</string>
+    <string name="username">Username</string>
+    <string name="password">Password</string>
+    <string name="save_config">Save configuration</string>
+    <string name="vpn_status_disconnected">VPN status: Disconnected</string>
+    <string name="vpn_status_format">VPN status: %1$s</string>
 </resources>

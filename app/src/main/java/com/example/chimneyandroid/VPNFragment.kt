@@ -241,19 +241,10 @@ class VPNFragment : Fragment() {
     }
 
     private fun stopVpnService() {
-        // 乐观地更新UI
         updateUiByStatus(VpnState.DISCONNECTING.name, "Disconnecting...")
 
-        val boundService = vpnService
-        if (isServiceBound && boundService != null) {
-            try {
-                boundService.disconnect()
-                return
-            } catch (e: RemoteException) {
-                Log.w(TAG, "Bound service unavailable, falling back to disconnect intent", e)
-            }
-        }
-
+        // Use the service command as the source of truth. The bound Binder can be
+        // stale after the activity has been recreated or returned from background.
         val intent = Intent(context, MyVpnService::class.java).apply {
             action = MyVpnService.ACTION_DISCONNECT
         }
@@ -262,6 +253,6 @@ class VPNFragment : Fragment() {
 
     private fun updateVpnStatus(status: String) {
         if (_binding == null) return
-        binding.vpnStatus.text = "VPN Status: $status"
+        binding.vpnStatus.text = getString(R.string.vpn_status_format, status)
     }
 }
