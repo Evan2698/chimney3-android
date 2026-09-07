@@ -7,6 +7,12 @@
     <fragment
         android:id="@+id/FirstFragment"
         android:name="com.example.chimneyandroid.VPNFragment"
-        android:label="@string/first_fragment_label"
+        android:label="@string/vpn_title"
         tools:layout="@layout/fragment_vpn" />
+
+    <fragment
+        android:id="@+id/aboutFragment"
+        android:name="com.example.chimneyandroid.AboutFragment"
+        android:label="@string/about"
+        tools:layout="@layout/fragment_about" />
 </navigation>

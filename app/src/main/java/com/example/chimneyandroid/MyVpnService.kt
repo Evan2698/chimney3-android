@@ -109,16 +109,16 @@ class MyVpnService : VpnService(), vpncore.Protect {
     }
 
     override fun onDestroy() {
-        super.onDestroy()
         Log.i(TAG, "VPN Service destroyed.")
         stopVpn()
         callbacks.kill()
+        super.onDestroy()
     }
 
     private fun startVpn(config: VpnConfig) {
         synchronized(stateLock) {
-            if (vpnThread != null || currentState == VpnState.CONNECTING || currentState == VpnState.CONNECTED) {
-                Log.w(TAG, "VPN is already running, will not start again.")
+            if (vpnThread != null || currentState == VpnState.DISCONNECTING) {
+                Log.w(TAG, "VPN is already running or stopping, will not start again.")
                 return
             }
             stopRequested = false
@@ -186,24 +186,28 @@ class MyVpnService : VpnService(), vpncore.Protect {
     }
 
     private fun stopVpn() {
+        val threadToStop: Thread
         val shouldStopCore: Boolean
         synchronized(stateLock) {
-            if (vpnThread == null) {
-                Log.d(TAG, "stopVpn() called but VPN is not running.")
-                if (currentState != VpnState.STOPPED) {
-                    updateStatusAndNotify(VpnState.STOPPED, "Disconnected")
-                }
+            val thread = vpnThread
+            if (thread == null) {
+                Log.d(TAG, "stopVpn() ignored because VPN is not running.")
+                return
+            }
+            if (currentState == VpnState.DISCONNECTING || stopRequested) {
+                Log.d(TAG, "stopVpn() ignored because disconnect is already in progress.")
                 return
             }
             stopRequested = true
             shouldStopCore = coreStarted
-            updateStatusAndNotify(VpnState.DISCONNECTING, "Disconnecting...")
+            threadToStop = thread
         }
 
+        updateStatusAndNotify(VpnState.DISCONNECTING, "Disconnecting...")
         if (shouldStopCore) {
             Vpncore.stopChimney()
         }
-        vpnThread?.interrupt()
+        threadToStop.interrupt()
     }
 
     private fun configureVpn(config: VpnConfig): ParcelFileDescriptor? {
